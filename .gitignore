@@ -6,4 +6,4 @@ __pycache__/
 node_modules/
 .DS_Store
 script.py
-_chat.txt_chat.txt
+_chat.txt
