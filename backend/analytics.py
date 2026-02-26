@@ -60,6 +60,37 @@ def get_top_words(messages: list[Message], n: int = 100) -> list[dict]:
     return [{"word": w, "count": c} for w, c in Counter(words).most_common(n)]
 
 
+def _compute_call_stats(messages: list[Message], participants: list[str]) -> dict:
+    calls = [m for m in messages if m.call_type is not None]
+
+    total_voice = sum(1 for m in calls if m.call_type == "voice" and not m.is_missed_call)
+    total_video = sum(1 for m in calls if m.call_type == "video" and not m.is_missed_call)
+    missed = sum(1 for m in calls if m.is_missed_call)
+
+    voice_sec = sum(m.call_duration_sec for m in calls if m.call_type == "voice" and m.call_duration_sec)
+    video_sec = sum(m.call_duration_sec for m in calls if m.call_type == "video" and m.call_duration_sec)
+
+    by_participant = {}
+    for p in participants:
+        pcalls = [m for m in calls if m.sender == p]
+        by_participant[p] = {
+            "voice_calls": sum(1 for m in pcalls if m.call_type == "voice" and not m.is_missed_call),
+            "video_calls": sum(1 for m in pcalls if m.call_type == "video" and not m.is_missed_call),
+            "missed_calls": sum(1 for m in pcalls if m.is_missed_call),
+            "voice_duration_min": round(sum(m.call_duration_sec for m in pcalls if m.call_type == "voice" and m.call_duration_sec) / 60, 1),
+            "video_duration_min": round(sum(m.call_duration_sec for m in pcalls if m.call_type == "video" and m.call_duration_sec) / 60, 1),
+        }
+
+    return {
+        "total_voice_calls": total_voice,
+        "total_video_calls": total_video,
+        "missed_calls": missed,
+        "voice_duration_min": round(voice_sec / 60, 1),
+        "video_duration_min": round(video_sec / 60, 1),
+        "by_participant": by_participant,
+    }
+
+
 def _extract_emojis(text: str) -> list[str]:
     matches = EMOJI_PATTERN.findall(text)
     result = []
@@ -169,6 +200,9 @@ def compute_analytics(messages: list[Message]) -> dict:
         "per_participant": per_participant_over_time,
     }
 
+    # Call stats
+    call_stats = _compute_call_stats(messages, participants)
+
     # Top 100 words
     top_words = get_top_words(messages, n=100)
 
@@ -215,4 +249,5 @@ def compute_analytics(messages: list[Message]) -> dict:
         "top_emojis": top_emojis,
         "per_participant_by_hour": per_participant_by_hour,
         "per_participant_by_dow": per_participant_by_dow,
+        "call_stats": call_stats,
     }

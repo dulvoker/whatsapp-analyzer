@@ -25,8 +25,6 @@ SYSTEM_PHRASES = [
     "this message was deleted",
     "you deleted this message",
     "this message was edited",
-    "missed voice call",
-    "missed video call",
     "changed the subject to",
     "changed this group",
     "joined using this group",
@@ -36,6 +34,27 @@ SYSTEM_PHRASES = [
     "turned on disappearing messages",
     "turned off disappearing messages",
 ]
+
+# Matches all observed call message formats:
+#   "Voice call\xa0 \u200e2 min"             → answered voice, 2 min
+#   "Voice call\xa0 \u200eNo answer"          → missed (no-answer form)
+#   "Missed voice call"                        → missed
+#   "Missed voice call\xa0 \u200eTap to call back" → missed
+#   "Missed video call"                        → missed video
+# Groups: (1) "missed " prefix or None, (2) "voice"/"video",
+#         (3) duration number or None, (4) "min"/"sec" or None,
+#         (5) "no answer"/"tap to call back" indicator or None
+CALL_PATTERN = re.compile(
+    r"^\u200e?\u202a?"
+    r"(missed\s+)?"                                       # group 1: explicit "missed" prefix
+    r"(voice|video)\s+call"                               # group 2: call type
+    r"(?:[\s\u200e\u202a\xa0]+"                           # optional suffix block (separator)
+    r"(?:"
+    r"(\d+)\s*(min|sec)"                                  # group 3,4: duration
+    r"|(no\s+answer|tap\s+to\s+call\s+back)"              # group 5: no-answer indicators
+    r"))?",
+    re.IGNORECASE,
+)
 
 DATETIME_FORMATS = [
     "%d/%m/%Y %H:%M:%S",
@@ -63,6 +82,9 @@ class Message:
     sender: str
     text: str
     is_media: bool
+    call_type: Optional[str] = None        # 'voice' | 'video' | None
+    call_duration_sec: Optional[int] = None  # None means missed or unknown duration
+    is_missed_call: bool = False
 
 
 def _detect_format(lines: list[str]) -> str:
@@ -128,7 +150,25 @@ def parse_chat(content: str) -> list[Message]:
 
             # Mark as media if pattern matches OR if "omitted" appears as safety net
             is_media = bool(MEDIA_PATTERN.match(text)) or "omitted" in text.lower()
-            current = Message(timestamp=ts, sender=sender, text=text, is_media=is_media)
+
+            # Detect call messages
+            call_type = None
+            call_duration_sec = None
+            is_missed_call = False
+            call_match = CALL_PATTERN.match(text)
+            if call_match:
+                missed_prefix, ctype, duration_val, duration_unit, no_answer = call_match.groups()
+                call_type = ctype.lower()
+                is_missed_call = bool(missed_prefix) or bool(no_answer)
+                if duration_val and duration_unit:
+                    secs = int(duration_val) * (60 if duration_unit.lower() == "min" else 1)
+                    call_duration_sec = secs
+
+            current = Message(
+                timestamp=ts, sender=sender, text=text, is_media=is_media,
+                call_type=call_type, call_duration_sec=call_duration_sec,
+                is_missed_call=is_missed_call,
+            )
             messages.append(current)
         else:
             if current is not None and line.strip():
