@@ -24,13 +24,11 @@ SYSTEM_PHRASES = [
     "messages and calls are end-to-end encrypted",
     "this message was deleted",
     "you deleted this message",
+    "this message was edited",
     "missed voice call",
     "missed video call",
-    "changed the subject",
+    "changed the subject to",
     "changed this group",
-    "added",
-    "removed",
-    "left",
     "joined using this group",
     "created group",
     "changed the group",
@@ -102,7 +100,6 @@ def parse_chat(content: str) -> list[Message]:
     Returns a list of Message objects. System messages are skipped.
     Media messages are kept but marked with is_media=True.
     """
-    # Strip BOM if present
     content = content.lstrip("\ufeff")
 
     lines = content.splitlines()
@@ -125,16 +122,15 @@ def parse_chat(content: str) -> list[Message]:
 
             ts = _parse_datetime(date_str, time_str)
             if ts is None:
-                # Unparseable timestamp - treat as continuation
                 if current is not None:
                     current.text += "\n" + line
                 continue
 
-            is_media = bool(MEDIA_PATTERN.match(text))
+            # Mark as media if pattern matches OR if "omitted" appears as safety net
+            is_media = bool(MEDIA_PATTERN.match(text)) or "omitted" in text.lower()
             current = Message(timestamp=ts, sender=sender, text=text, is_media=is_media)
             messages.append(current)
         else:
-            # Continuation line (multi-line message)
             if current is not None and line.strip():
                 current.text += "\n" + line
 

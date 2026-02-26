@@ -20,6 +20,8 @@ STOPWORDS = {
     "know", "think", "time", "good", "great", "want", "make", "see",
     "come", "back", "well", "too", "also", "now", "oh", "ah", "haha",
     "hahaha", "hey", "hi", "bye", "am", "pm",
+
+    "omitted", "image", "video", "audio", "sticker", "document", "voice", "audio", "call", "sticker", "answer", "back"
 }
 
 EMOJI_PATTERN = re.compile(
@@ -47,11 +49,14 @@ DAY_ORDER = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday",
 
 def get_top_words(messages: list[Message], n: int = 100) -> list[dict]:
     """Return the top n most frequent words across all non-media messages."""
-    text_messages = [m.text for m in messages if not m.is_media and m.text]
+    sender_names = {word for m in messages for word in m.sender.lower().split()}
+    exclude = STOPWORDS | sender_names
+
+    text_messages = [m.text for m in messages if not m.is_media and m.text and 'omitted' not in m.text]
     all_text = " ".join(text_messages).lower()
     all_text = EMOJI_PATTERN.sub("", all_text)
     all_text = re.sub(r"[^\w\s]", "", all_text)
-    words = [w for w in all_text.split() if w not in STOPWORDS and len(w) > 1]
+    words = [w for w in all_text.split() if w not in exclude and len(w) > 1]
     return [{"word": w, "count": c} for w, c in Counter(words).most_common(n)]
 
 
