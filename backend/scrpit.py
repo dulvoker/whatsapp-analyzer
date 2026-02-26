@@ -1,5 +1,6 @@
 from chat_parser import parse_chat
 from analytics import compute_analytics
+from analytics import get_top_words
 
 with open("_chat.txt", "r", encoding="utf-8") as f:
     content = f.read()
@@ -16,5 +17,6 @@ messages = parse_chat(content)
 print(f"Total messages parsed: {len(messages)}")
 
 
-
-print(compute_analytics(messages=messages))
+words = get_top_words(messages, n=100)
+for w in words[:100]:
+    print(w)

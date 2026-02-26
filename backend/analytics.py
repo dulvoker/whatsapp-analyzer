@@ -20,14 +20,6 @@ STOPWORDS = {
     "know", "think", "time", "good", "great", "want", "make", "see",
     "come", "back", "well", "too", "also", "now", "oh", "ah", "haha",
     "hahaha", "hey", "hi", "bye", "am", "pm",
-    # Spanish
-    "el", "la", "los", "las", "un", "una", "unos", "unas", "y", "o",
-    "de", "del", "en", "con", "por", "para", "que", "se", "le", "les",
-    "lo", "me", "te", "nos", "es", "son", "fue", "ser", "estar", "no",
-    "si", "como", "pero", "muy", "mas", "ya", "mi", "tu", "su", "al",
-    "yo", "también", "porque", "cuando", "donde", "todo", "esta", "este",
-    "eso", "ese", "esa", "más", "así", "hay", "bien", "aquí", "ahí",
-    "sí", "qué", "él", "ella", "ellos", "nosotros",
 }
 
 EMOJI_PATTERN = re.compile(
@@ -51,6 +43,16 @@ EMOJI_PATTERN = re.compile(
 )
 
 DAY_ORDER = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+
+def get_top_words(messages: list[Message], n: int = 100) -> list[dict]:
+    """Return the top n most frequent words across all non-media messages."""
+    text_messages = [m.text for m in messages if not m.is_media and m.text]
+    all_text = " ".join(text_messages).lower()
+    all_text = EMOJI_PATTERN.sub("", all_text)
+    all_text = re.sub(r"[^\w\s]", "", all_text)
+    words = [w for w in all_text.split() if w not in STOPWORDS and len(w) > 1]
+    return [{"word": w, "count": c} for w, c in Counter(words).most_common(n)]
 
 
 def _extract_emojis(text: str) -> list[str]:
@@ -162,12 +164,8 @@ def compute_analytics(messages: list[Message]) -> dict:
         "per_participant": per_participant_over_time,
     }
 
-    # Top 20 words
-    all_text = " ".join(text_only["text"].dropna().tolist()).lower()
-    all_text_clean = EMOJI_PATTERN.sub("", all_text)
-    all_text_clean = re.sub(r"[^\w\s]", "", all_text_clean)
-    words = [w for w in all_text_clean.split() if w not in STOPWORDS and len(w) > 1]
-    top_words = [{"word": w, "count": c} for w, c in Counter(words).most_common(20)]
+    # Top 100 words
+    top_words = get_top_words(messages, n=100)
 
     # Top 10 emojis
     all_text_raw = " ".join(df["text"].dropna().tolist())
