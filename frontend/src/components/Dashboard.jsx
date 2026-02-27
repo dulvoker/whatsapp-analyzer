@@ -1,3 +1,4 @@
+import { useState, useMemo } from 'react'
 import {
   Chart as ChartJS,
   CategoryScale, LinearScale, BarElement,
@@ -47,8 +48,29 @@ export default function Dashboard({ data, onReset }) {
     messages_by_hour, messages_by_dow, messages_over_time,
     top_words, top_emojis, call_stats } = data
 
+  const [wordSearch, setWordSearch] = useState('')
+  const [minWordLen, setMinWordLen] = useState(2)
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+
   const total = messages_per_participant.reduce((s, p) => s + p.count, 0)
   const avgMap = Object.fromEntries(avg_length_per_participant.map(p => [p.sender, p.avg_length]))
+
+  const filteredWords = useMemo(() => {
+    const q = wordSearch.trim().toLowerCase()
+    return top_words.filter(({ word }) =>
+      word.length >= minWordLen && (!q || word.includes(q))
+    )
+  }, [top_words, minWordLen, wordSearch])
+
+  const filteredTimeline = useMemo(() => {
+    return messages_over_time.total.filter(d =>
+      (!dateFrom || d.date >= dateFrom) && (!dateTo || d.date <= dateTo)
+    )
+  }, [messages_over_time, dateFrom, dateTo])
+
+  const isDateFiltered = Boolean(dateFrom || dateTo)
+  const filteredTotal = filteredTimeline.reduce((s, d) => s + d.count, 0)
 
   return (
     <div>
@@ -167,32 +189,115 @@ export default function Dashboard({ data, onReset }) {
           </div>
         </Card>
 
-        {/* Top words */}
-        <Card style={{ gridColumn: 'span 4' }}>
-          <Label>Top Words</Label>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12, alignItems: 'center' }}>
-            {top_words.slice(0, 30).map(({ word, count }) => {
-              const maxCount = top_words[0].count
-              const size = 11 + Math.round((count / maxCount) * 10)
-              return (
-                <span key={word} style={{ ...wordTag, fontSize: size }}>
-                  {word}
-                </span>
-              )
-            })}
+        {/* Top words — full width with filters */}
+        <Card style={{ gridColumn: 'span 12' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+            <div style={labelStyle}>Top Words</div>
+            <span style={{ fontSize: 10, color: 'var(--muted)' }}>
+              {filteredWords.length} / {top_words.length}
+            </span>
           </div>
+
+          {/* Filter controls */}
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 20, flexWrap: 'wrap' }}>
+            <input
+              type="text"
+              placeholder="search words..."
+              value={wordSearch}
+              onChange={e => setWordSearch(e.target.value)}
+              style={searchInput}
+            />
+            <div style={{ display: 'flex', gap: 4 }}>
+              {[2, 3, 4, 5, 6].map(n => (
+                <button
+                  key={n}
+                  onClick={() => setMinWordLen(n)}
+                  style={{
+                    ...filterChip,
+                    background: minWordLen === n ? 'var(--accent1)' : 'var(--surface2)',
+                    color: minWordLen === n ? '#000' : 'var(--muted)',
+                    borderColor: minWordLen === n ? 'var(--accent1)' : 'var(--border)',
+                  }}
+                >
+                  {n}+ letters
+                </button>
+              ))}
+            </div>
+            {wordSearch && (
+              <button onClick={() => setWordSearch('')} style={{ ...filterChip, color: 'var(--accent1)', borderColor: 'transparent' }}>
+                ✕ clear
+              </button>
+            )}
+          </div>
+
+          {filteredWords.length === 0 ? (
+            <div style={{ color: 'var(--muted)', fontSize: 12, padding: '20px 0' }}>
+              {wordSearch
+                ? `"${wordSearch}" not found in top ${top_words.length} words`
+                : 'no words match the current filters'}
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+              {filteredWords.map(({ word, count }) => {
+                const maxCount = filteredWords[0].count
+                const size = 11 + Math.round((count / maxCount) * 10)
+                return (
+                  <span key={word} style={{ ...wordTag, fontSize: size }}>
+                    {word}
+                    <span style={{ color: 'var(--muted)', fontSize: 10, marginLeft: 5 }}>{count}</span>
+                  </span>
+                )
+              })}
+            </div>
+          )}
         </Card>
 
-        {/* Messages over time */}
+        {/* Messages over time with date range filter */}
         <Card style={{ gridColumn: 'span 12' }}>
-          <Label>Messages Over Time · Daily Activity</Label>
-          <div style={{ height: 180, marginTop: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <div>
+              <div style={labelStyle}>Messages Over Time · Daily Activity</div>
+              {isDateFiltered && (
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: -8 }}>
+                  {filteredTotal.toLocaleString()} messages in selected range
+                </div>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input
+                type="date"
+                value={dateFrom}
+                min={summary.date_range.start}
+                max={summary.date_range.end}
+                onChange={e => setDateFrom(e.target.value)}
+                style={dateInput}
+              />
+              <span style={{ color: 'var(--muted)', fontSize: 11 }}>→</span>
+              <input
+                type="date"
+                value={dateTo}
+                min={summary.date_range.start}
+                max={summary.date_range.end}
+                onChange={e => setDateTo(e.target.value)}
+                style={dateInput}
+              />
+              {isDateFiltered && (
+                <button
+                  onClick={() => { setDateFrom(''); setDateTo('') }}
+                  style={{ ...filterChip, color: 'var(--accent1)', borderColor: 'transparent' }}
+                >
+                  ✕ clear
+                </button>
+              )}
+            </div>
+          </div>
+          <div style={{ height: 180 }}>
             <Bar
               data={{
-                labels: messages_over_time.total.map(d => d.date),
+                labels: filteredTimeline.map(d => d.date),
                 datasets: [{
-                  data: messages_over_time.total.map(d => d.count),
-                  backgroundColor: messages_over_time.total.map(d =>
+                  data: filteredTimeline.map(d => d.count),
+                  backgroundColor: filteredTimeline.map(d =>
                     d.count === summary.most_active_day.count
                       ? 'rgba(251,191,36,0.9)'
                       : 'rgba(110,231,183,0.5)'
@@ -326,4 +431,39 @@ const wordTag = {
   color: 'var(--text)',
   letterSpacing: '0.05em',
   cursor: 'default',
+  display: 'inline-flex',
+  alignItems: 'center',
+}
+
+const searchInput = {
+  background: 'var(--surface2)',
+  border: '1px solid var(--border)',
+  color: 'var(--text)',
+  fontFamily: "'JetBrains Mono', monospace",
+  fontSize: 11,
+  padding: '5px 12px',
+  outline: 'none',
+  width: 200,
+}
+
+const filterChip = {
+  background: 'var(--surface2)',
+  border: '1px solid var(--border)',
+  color: 'var(--muted)',
+  fontFamily: "'JetBrains Mono', monospace",
+  fontSize: 10,
+  padding: '4px 10px',
+  cursor: 'pointer',
+  letterSpacing: '0.05em',
+}
+
+const dateInput = {
+  background: 'var(--surface2)',
+  border: '1px solid var(--border)',
+  color: 'var(--text)',
+  fontFamily: "'JetBrains Mono', monospace",
+  fontSize: 11,
+  padding: '4px 8px',
+  outline: 'none',
+  colorScheme: 'dark',
 }
